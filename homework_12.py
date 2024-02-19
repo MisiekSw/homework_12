@@ -1,6 +1,6 @@
-from collections import UserDict
-from datetime import timedelta, datetime
 import pickle
+from collections import UserDict
+from datetime import datetime
 
 
 class Field:
@@ -96,30 +96,16 @@ class AddressBook(UserDict):
             with open(filename, "rb") as file:
                 self.data = pickle.load(file)
         except FileNotFoundError:
-            print("Plik nie istnieje. Książka adresowa została zainicjowana jako pusta")
+            print(
+                "Plik nie istnieje. Książka adresowa została zainicjowana jako pusta."
+            )
         except Exception as e:
             print(f"Błąd podczas wczytywania pliku: {e}")
-
-    def __iter__(self):
-        return iter(self.data.values())
-
-    def search_records(self, criteria):
-        result = []
-        for record in self.values():
-            match = any(
-                str(
-                    getattr(record, field, None).lower().startswith(str(value).lower())
-                    for field, value in criteria.items()
-                )
-            )
-            if match:
-                result.append(record)
-        return result
 
 
 class AssistantBot:
     def __init__(self):
-        self.contacts = {}
+        self.contacts = AddressBook()
 
     def get_first_n_records(self, n):
         record_iterator = iter(self.contacts.values())
@@ -204,12 +190,34 @@ class AssistantBot:
             ]
         )
 
+    @input_error
+    def handle_search(self, query):
+        matching_records = []
+        for name, record in self.contacts.items():
+            if (
+                query.lower() in name.lower()
+                or any(query in phone.value for phone in record.phones)
+                or (record.birthday and query in record.birthday.value)
+            ):
+                matching_records.append(record)
+
+        if not matching_records:
+            return f"Brak pasujących rekordów dla zapytania: {query}"
+
+        result_info = [
+            f"{record.name.value}: {record.phones[0].value if record.phones else 'Brak numeru telefonu'}, Birthday: {record.birthday.value if record.birthday else 'None'}"
+            for record in matching_records
+        ]
+
+        return "\n".join(result_info)
+
     def main(self):
         while True:
             user_input = input("Wprowadź polecenie: ").lower()
 
             if user_input in ["good bye", "close", "exit"]:
                 print("Good bye!")
+                self.contacts.save_to_file("address_book.pkl")
                 break
             elif user_input == "hello":
                 print(self.handle_hello())
@@ -226,16 +234,7 @@ class AssistantBot:
             elif user_input.startswith("show n records"):
                 print(self.handle_show_n_records(user_input[14:]))
             elif user_input.startswith("search"):
-                criteria = dict(item.split("=") for item in user_input[7:].split("."))
-                search_result = self.contacts.search_records(criteria)
-                if search_result:
-                    print("Znalezione kontakty:")
-                    for record in search_result:
-                        print(
-                            f"{record.name.value}: {record.phones[0].value}, Birthday: {record.birthday.value if record.birthday else 'None'}"
-                        )
-                else:
-                    print("Brak pasujących kontaktów.")
+                print(self.handle_search(user_input[7:]))
             else:
                 print("Nieznane polecenie. Spróbuj ponownie.")
 
